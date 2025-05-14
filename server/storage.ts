@@ -806,13 +806,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDefaultPipeline(): Promise<Pipeline | undefined> {
-    try {
-      const [pipeline] = await db.select().from(pipelines).where(eq(pipelines.isDefault, true));
-      return pipeline || await this.getPipeline(1); // Retorna o primeiro pipeline se não houver padrão definido
-    } catch (error: any) {
-      console.error('Error fetching default pipeline:', error);
-      throw new Error(`Failed to fetch default pipeline: ${error.message}`);
-    }
+    const pipelines = Array.from(this.pipelinesList.values());
+    return pipelines.find(pipeline => pipeline.isDefault) || pipelines[0];
   }
 
   async createPipeline(pipeline: InsertPipeline): Promise<Pipeline> {
@@ -850,17 +845,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Pipeline Stages
-  async getPipelineStages(pipelineId?: number): Promise<PipelineStage[]> {
+  async getPipelineStages(pipelineId: number): Promise<PipelineStage[]> {
     try {
-      if (pipelineId) {
-        return await db
-          .select()
-          .from(pipelineStages)
-          .where(eq(pipelineStages.pipelineId, pipelineId))
-          .orderBy(asc(pipelineStages.order));
-      } else {
-        return await db.select().from(pipelineStages).orderBy(asc(pipelineStages.order));
-      }
+      const stages = await db
+        .select()
+        .from(pipelineStages)
+        .where(eq(pipelineStages.pipelineId, pipelineId))
+        .orderBy(pipelineStages.order);
+      return stages;
     } catch (error: any) {
       console.error('Error fetching pipeline stages:', error);
       throw new Error(`Failed to fetch pipeline stages: ${error.message}`);

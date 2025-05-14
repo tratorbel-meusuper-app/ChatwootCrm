@@ -245,7 +245,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Verificar se é atualização normal ou do drag-and-drop
       const id = parseInt(req.params.id);
-      const { dealId, stageId, order } = req.body;
+      const { dealId, stageId, order, saleStatus } = req.body;
       
       // Se recebemos dealId no corpo, este é um request do drag-and-drop
       const targetId = dealId || id;
@@ -280,6 +280,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Atualização normal via formulário
       const validatedData = insertDealSchema.partial().parse(req.body);
+      
+      // Lógica para mover automaticamente para estágios de vendas realizadas/perdidas
+      if (validatedData.saleStatus) {
+        // Buscar o pipeline padrão
+        const defaultPipeline = await storage.getDefaultPipeline();
+        if (defaultPipeline) {
+          // Buscar estágios do pipeline
+          const stages = await storage.getPipelineStages(defaultPipeline.id);
+          
+          // Encontrar estágios de vendas realizadas e perdidas
+          const wonStage = stages.find(stage => stage.stageType === 'completed');
+          const lostStage = stages.find(stage => stage.stageType === 'lost');
+          
+          // Mover para o estágio correto baseado no status da venda
+          if (validatedData.saleStatus === 'won' && wonStage) {
+            validatedData.stageId = wonStage.id;
+          } else if (validatedData.saleStatus === 'lost' && lostStage) {
+            validatedData.stageId = lostStage.id;
+          }
+        }
+      }
       
       // Sincronização bidirecional com Chatwoot
       if (validatedData.name && 
