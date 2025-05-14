@@ -56,15 +56,27 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = 5000;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
+  // Permitir configuração via variáveis de ambiente
+  const port = process.env.PORT ? Number(process.env.PORT) : 5000;
+  const host = process.env.HOST || "localhost";
+  
+  try {
+    server.listen(port, host, () => {
+      log(`serving on http://${host}:${port}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+
+  // Adicionar tratamento de erro para o evento 'error'
+  server.on('error', (error: any) => {
+    console.error('Server error:', error);
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Porta ${port} já está em uso. Tente outra porta.`);
+    } else if (error.code === 'ENOTSUP') {
+      console.error('Erro: Não foi possível iniciar o servidor. Verifique as configurações de rede e permissões.');
+    }
+    process.exit(1);
   });
 })();
