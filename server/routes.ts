@@ -23,30 +23,6 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 
-// Definir a API key válida (idealmente, isso viria de um banco de dados ou variável de ambiente)
-const VALID_API_KEY = 'C7geGX2kMMarFP1cb4iG6tSNAre6Kgo2CuG8';
-
-// Middleware de autenticação por API key
-const authenticateApiKey = (req: Request, res: Response, next: NextFunction) => {
-  const apiKey = req.query.apikey as string;
-
-  if (!apiKey) {
-    return res.status(401).json({ 
-      message: "API key é obrigatória", 
-      error: "Nenhuma chave de API fornecida" 
-    });
-  }
-
-  if (apiKey !== VALID_API_KEY) {
-    return res.status(403).json({ 
-      message: "Acesso negado", 
-      error: "Chave de API inválida" 
-    });
-  }
-
-  next();
-};
-
 export async function registerRoutes(app: Express): Promise<Server> {
   // API routes
   const apiRouter = express.Router();
@@ -407,36 +383,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Configurações do CRM
-  apiRouter.get("/settings", authenticateApiKey, async (req: Request, res: Response) => {
+  apiRouter.get("/settings", async (req: Request, res: Response) => {
     try {
       const settings = await storage.getSettings();
-      
-      if (!settings) {
-        return res.status(404).json({ 
-          message: "Configurações não encontradas" 
-        });
-      }
-      
-      // Remover informações sensíveis antes de enviar
-      const { 
-        chatwootApiKey, 
-        chatwootUrl, 
-        accountId, 
-        ...safeSettings 
-      } = settings;
-      
-      res.json({
-        ...safeSettings,
-        hasApiKey: !!chatwootApiKey,
-        hasUrl: !!chatwootUrl,
-        hasAccountId: !!accountId
-      });
+      res.json(settings || {});
     } catch (error) {
-      console.error("Erro ao buscar configurações:", error);
-      res.status(500).json({ 
-        message: "Erro ao buscar configurações", 
-        error: error instanceof Error ? error.message : String(error)
-      });
+      res.status(500).json({ message: "Failed to fetch settings" });
     }
   });
   
@@ -1553,37 +1505,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: `Erro ao excluir modelo de máquina: ${error}` });
-    }
-  });
-
-  // Modificar a rota de deleção de leads para incluir autenticação
-  apiRouter.delete("/leads/:id", authenticateApiKey, async (req: Request, res: Response) => {
-    try {
-      const leadId = parseInt(req.params.id, 10);
-      if (isNaN(leadId)) {
-        return res.status(400).json({ message: "ID do lead inválido" });
-      }
-      
-      const lead = await storage.getLead(leadId);
-      if (!lead) {
-        return res.status(404).json({ message: `Lead com ID ${leadId} não encontrado` });
-      }
-      
-      const success = await storage.deleteLead(leadId);
-      if (!success) {
-        return res.status(500).json({ message: "Falha ao deletar lead" });
-      }
-      
-      res.status(200).json({ 
-        message: "Lead deletado com sucesso", 
-        deletedLead: lead 
-      });
-    } catch (error) {
-      console.error(`Erro ao deletar lead ${req.params.id}:`, error);
-      res.status(500).json({ 
-        message: "Erro ao deletar lead", 
-        error: error instanceof Error ? error.message : String(error)
-      });
     }
   });
 
