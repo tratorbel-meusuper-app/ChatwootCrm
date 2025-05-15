@@ -51,6 +51,7 @@ export const leads = pgTable("leads", {
   chatwootAgentName: text("chatwoot_agent_name"), // Nome do agente do Chatwoot
   // Campos de rastreamento
   notes: text("notes"), // anotações gerais sobre o lead
+  order: integer("order").default(0),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -79,6 +80,7 @@ export const insertLeadSchema = createInsertSchema(leads).pick({
   chatwootAgentId: true,
   chatwootAgentName: true,
   notes: true,
+  order: true,
 });
 
 export type InsertLead = z.infer<typeof insertLeadSchema>;
@@ -179,6 +181,8 @@ export const deals = pgTable("deals", {
   // Campos de rastreamento
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  quoteCodeSao: text("quote_code_sao"), // Código Cotação São
+  quoteCodePara: text("quote_code_para"), // Código Cotação Pará
 }, (table) => {
   return {
     leadIdForeignKey: foreignKey({
@@ -212,6 +216,8 @@ export const insertDealSchema = createInsertSchema(deals).pick({
   lostNotes: true,
   notes: true,
   chatwootConversationId: true,
+  quoteCodeSao: true,
+  quoteCodePara: true,
 });
 
 export type InsertDeal = z.infer<typeof insertDealSchema>;
