@@ -6,12 +6,13 @@ import { relations } from "drizzle-orm";
 // Users schema from original file
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
+  email: text("email").notNull().unique(),
   password: text("password").notNull(),
+  role: text("role").default('user').notNull(), // 'admin' ou 'user'
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
+  email: true,
   password: true,
 });
 
@@ -32,7 +33,8 @@ export const leads = pgTable("leads", {
   corporateName: text("corporate_name"), // razão social
   cpf: text("cpf"),
   stateRegistration: text("state_registration"), // inscrição estadual
-  clientCode: text("client_code"), // código do cliente
+  clientCodeSaoPaulo: text("client_code_sao_paulo"), // código Sisrev São Paulo
+  clientCodePara: text("client_code_para"), // código Sisrev Pará
   // Contato
   email: text("email"),
   phone: text("phone"),
@@ -63,7 +65,8 @@ export const insertLeadSchema = createInsertSchema(leads).pick({
   corporateName: true,
   cpf: true,
   stateRegistration: true,
-  clientCode: true,
+  clientCodeSaoPaulo: true,
+  clientCodePara: true,
   email: true,
   phone: true,
   address: true,
@@ -160,6 +163,7 @@ export const deals = pgTable("deals", {
   leadId: integer("lead_id").notNull(),
   stageId: integer("stage_id").notNull(),
   pipelineId: integer("pipeline_id").notNull(), // ID do funil ao qual o negócio pertence
+  userId: integer("user_id").notNull(), // Novo campo: usuário criador
   order: integer("order").default(0), // Posição do deal dentro do estágio para ordenação
   value: doublePrecision("value").default(0),
   quoteValue: doublePrecision("quote_value").default(0),
@@ -197,11 +201,11 @@ export const insertDealSchema = createInsertSchema(deals).pick({
   leadId: true,
   stageId: true,
   pipelineId: true,
+  userId: true,
   order: true,
   value: true,
   quoteValue: true,
   status: true,
-  // Status da venda
   saleStatus: true,
   salePerformance: true,
   lostReason: true,

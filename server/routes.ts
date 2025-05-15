@@ -19,9 +19,44 @@ import {
   SalePerformanceReason,
   salePerformanceReasons,
   machineModels,
-  machineBrands
+  machineBrands,
+  users
 } from "@shared/schema";
 import { z } from "zod";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+
+const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
+
+// Função utilitária para gerar token
+function generateToken(user: any) {
+  return jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
+}
+
+// Middleware de autenticação
+function authMiddleware(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Token não fornecido" });
+  }
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    (req as any).user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: "Token inválido" });
+  }
+}
+
+// Middleware para proteger rotas de admin
+function adminOnly(req: Request, res: Response, next: NextFunction) {
+  const user = (req as any).user;
+  if (!user || user.role !== 'admin') {
+    return res.status(403).json({ message: 'Apenas administradores podem executar esta ação.' });
+  }
+  next();
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // API routes
@@ -113,7 +148,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.delete("/pipeline-stages/:id", async (req: Request, res: Response) => {
+  apiRouter.delete("/pipeline-stages/:id", authMiddleware, adminOnly, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -132,34 +167,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Deals routes
-  apiRouter.get("/deals", async (req: Request, res: Response) => {
+  apiRouter.get("/deals", authMiddleware, async (req: Request, res: Response) => {
     try {
+      const user = (req as any).user;
+      if (!user || !user.id) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
       const stageId = req.query.stageId ? parseInt(req.query.stageId as string) : undefined;
       const pipelineId = req.query.pipelineId ? parseInt(req.query.pipelineId as string) : undefined;
+      const filterUserId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
       let deals;
-      
-      if (stageId && !isNaN(stageId)) {
-        deals = await storage.getDealsByStage(stageId);
+      if (user.role === 'admin') {
+        // Admin pode ver todos ou filtrar por userId
+        if (typeof stageId === 'number' && !isNaN(stageId)) {
+          deals = await storage.getDealsByStage(stageId);
+        } else {
+          deals = await storage.getDeals();
+        }
+        if (filterUserId) {
+          deals = deals.filter((deal: any) => deal.userId === filterUserId);
+        }
       } else {
-        deals = await storage.getDeals(pipelineId);
+        // Usuário comum só vê seus próprios negócios
+        if (typeof stageId === 'number' && !isNaN(stageId)) {
+          deals = (await storage.getDealsByStage(stageId)).filter((deal: any) => deal.userId === user.id);
+        } else {
+          deals = (await storage.getDeals()).filter((deal: any) => deal.userId === user.id);
+        }
       }
-      
       // Enriquecer os deals com informações do lead
       const enrichedDeals = await Promise.all(
-        deals.map(async (deal) => {
+        deals.map(async (deal: any) => {
           const lead = await storage.getLead(deal.leadId);
           return {
             ...deal,
             leadData: lead ? {
-              name: lead.name,
-              companyName: lead.companyName,
-              phone: lead.phone,
-              email: lead.email
-            } : null
+              name: lead.name || '',
+              companyName: lead.companyName || '',
+              phone: lead.phone || '',
+              email: lead.email || ''
+            } : { name: '', companyName: '', phone: '', email: '' },
+            creatorUserId: deal.userId // para exibir no frontend
           };
         })
       );
-      
       res.json(enrichedDeals);
     } catch (error) {
       console.error("Erro ao buscar deals:", error);
@@ -167,7 +218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.post("/deals", async (req: Request, res: Response) => {
+  apiRouter.post("/deals", authMiddleware, async (req: Request, res: Response) => {
     try {
       console.log("Recebendo dados do negócio:", JSON.stringify(req.body));
       
@@ -219,6 +270,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       }
+      
+      // Adicionar o userId do usuário autenticado
+      const user = (req as any).user;
+      if (!user || !user.id) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
+      validatedData.userId = user.id;
       
       try {
         const deal = await storage.createDeal(validatedData);
@@ -353,7 +411,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.delete("/deals/:id", async (req: Request, res: Response) => {
+  apiRouter.delete("/deals/:id", authMiddleware, adminOnly, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -1039,7 +1097,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.delete("/client-machines/:id", async (req: Request, res: Response) => {
+  apiRouter.delete("/client-machines/:id", authMiddleware, adminOnly, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -1106,7 +1164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.delete("/loss-reasons/:id", async (req: Request, res: Response) => {
+  apiRouter.delete("/loss-reasons/:id", authMiddleware, adminOnly, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -1120,8 +1178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting loss reason:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({ message: "Failed to delete loss reason" });
     }
   });
   
@@ -1178,7 +1235,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.delete("/quote-items/:id", async (req: Request, res: Response) => {
+  apiRouter.delete("/quote-items/:id", authMiddleware, adminOnly, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -1262,7 +1319,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.delete("/machine-brands/:id", async (req: Request, res: Response) => {
+  apiRouter.delete("/machine-brands/:id", authMiddleware, adminOnly, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -1342,7 +1399,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  apiRouter.delete("/sale-performance-reasons/:id", async (req: Request, res: Response) => {
+  apiRouter.delete("/sale-performance-reasons/:id", authMiddleware, adminOnly, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -1504,7 +1561,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  apiRouter.delete("/machine-models/:id", async (req: Request, res: Response) => {
+  apiRouter.delete("/machine-models/:id", authMiddleware, adminOnly, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -1526,6 +1583,134 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: `Erro ao excluir modelo de máquina: ${error}` });
+    }
+  });
+
+  // Rota de registro (liberada para qualquer usuário)
+  apiRouter.post("/auth/register", async (req: Request, res: Response) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ message: "E-mail e senha obrigatórios" });
+    }
+    const exists = await storage.getUserByEmail(email);
+    if (exists) {
+      return res.status(400).json({ message: "E-mail já cadastrado" });
+    }
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await storage.createUser({ email, password: hashed });
+    const token = generateToken(user);
+    res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+  });
+
+  // Rota de login
+  apiRouter.post("/auth/login", async (req: Request, res: Response) => {
+    const { email, password } = req.body;
+    const user = await storage.getUserByEmail(email);
+    if (!user) return res.status(400).json({ message: "E-mail ou senha inválidos" });
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return res.status(400).json({ message: "E-mail ou senha inválidos" });
+    const token = generateToken(user);
+    res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+  });
+
+  // Rota para admin criar novos usuários
+  apiRouter.post("/auth/admin-create", authMiddleware, async (req: Request, res: Response) => {
+    const userReq = (req as any).user;
+    if (!userReq.isAdmin) return res.status(403).json({ message: "Apenas administradores podem criar usuários" });
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ message: "Usuário e senha obrigatórios" });
+    const exists = await storage.getUserByUsername(username);
+    if (exists) return res.status(400).json({ message: "Usuário já existe" });
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await storage.createUser({ username, password: hashed, isAdmin: false });
+    res.json({ user: { id: user.id, username: user.username, isAdmin: false } });
+  });
+
+  // Rotas de gerenciamento de usuários (apenas admin)
+  apiRouter.get("/users", authMiddleware, adminOnly, async (req: Request, res: Response) => {
+    try {
+      const users = await storage.getUsers();
+      res.json(users.map(u => ({ id: u.id, email: u.email, role: u.role })));
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao listar usuários" });
+    }
+  });
+
+  apiRouter.post("/users", authMiddleware, adminOnly, async (req: Request, res: Response) => {
+    try {
+      const { email, password, role } = req.body;
+      if (!email || !password || !role) {
+        return res.status(400).json({ message: "E-mail, senha e role são obrigatórios" });
+      }
+      const exists = await storage.getUserByEmail(email);
+      if (exists) {
+        return res.status(400).json({ message: "E-mail já cadastrado" });
+      }
+      const hashed = await bcrypt.hash(password, 10);
+      const user = await storage.createUser({ email, password: hashed, role });
+      res.status(201).json({ id: user.id, email: user.email, role: user.role });
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao criar usuário" });
+    }
+  });
+
+  apiRouter.put("/users/:id", authMiddleware, adminOnly, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "ID inválido" });
+      }
+      const { email, role, password } = req.body;
+      const updateData: any = {};
+      if (email) updateData.email = email;
+      if (role) updateData.role = role;
+      if (password) updateData.password = await bcrypt.hash(password, 10);
+      const updated = await storage.updateUser(id, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      }
+      res.json({ id: updated.id, email: updated.email, role: updated.role });
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao atualizar usuário" });
+    }
+  });
+
+  apiRouter.delete("/users/:id", authMiddleware, adminOnly, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const user = (req as any).user;
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "ID inválido" });
+      }
+      if (user.id === id) {
+        return res.status(400).json({ message: "Você não pode excluir a si mesmo." });
+      }
+      const success = await storage.deleteUser(id);
+      if (!success) {
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao excluir usuário" });
+    }
+  });
+
+  // Atualizar ordem dos deals em um estágio (apenas admin)
+  apiRouter.put("/deals/order", authMiddleware, adminOnly, async (req: Request, res: Response) => {
+    try {
+      const { orders } = req.body; // [{id, order}]
+      if (!Array.isArray(orders)) {
+        return res.status(400).json({ message: "Formato inválido. Esperado: { orders: [{id, order}] }" });
+      }
+      // Atualizar todos os deals em batch
+      for (const { id, order } of orders) {
+        if (typeof id !== 'number' || typeof order !== 'number') continue;
+        await storage.updateDeal(id, { order });
+      }
+      res.status(200).json({ message: "Ordem atualizada com sucesso" });
+    } catch (error) {
+      console.error("Erro ao atualizar ordem dos deals:", error);
+      res.status(500).json({ message: "Erro ao atualizar ordem dos deals" });
     }
   });
 

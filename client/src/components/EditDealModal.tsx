@@ -58,7 +58,7 @@ import RelatedDeals from "@/components/RelatedDeals";
 interface EditDealModalProps {
   isOpen: boolean;
   onClose: () => void;
-  deal: Deal | null;
+  deal: Partial<Deal> | null;
   pipelineStages: PipelineStage[];
 }
 
@@ -92,7 +92,8 @@ export default function EditDealModal({ isOpen, onClose, deal, pipelineStages }:
   const [stateRegistration, setStateRegistration] = useState("");
   
   // Campos de contato
-  const [clientCode, setClientCode] = useState("");
+  const [clientCodeSaoPaulo, setClientCodeSaoPaulo] = useState("");
+  const [clientCodePara, setClientCodePara] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   
@@ -150,9 +151,9 @@ export default function EditDealModal({ isOpen, onClose, deal, pipelineStages }:
   useEffect(() => {
     if (deal) {
       // Campos básicos do deal
-      setName(deal.name);
-      setPipelineId(deal.pipelineId.toString());
-      setStageId(deal.stageId.toString());
+      setName(deal.name || "");
+      setPipelineId(deal.pipelineId?.toString() || "");
+      setStageId(deal.stageId?.toString() || "");
       setValue(formatCurrency(deal.value || 0));
       setStatus(deal.status || "in_progress");
       setNotes(deal.notes || "");
@@ -181,7 +182,8 @@ export default function EditDealModal({ isOpen, onClose, deal, pipelineStages }:
       setStateRegistration(leadData.stateRegistration || "");
       
       // Campos de contato
-      setClientCode(leadData.clientCode || "");
+      setClientCodeSaoPaulo(leadData.clientCodeSaoPaulo || "");
+      setClientCodePara(leadData.clientCodePara || "");
       setEmail(leadData.email || "");
       setPhone(formatPhoneNumber(leadData.phone) || "");
       
@@ -369,7 +371,8 @@ export default function EditDealModal({ isOpen, onClose, deal, pipelineStages }:
       cpf: clientType === "person" ? cpf : null,
       
       // Dados de contato
-      clientCode,
+      clientCodeSaoPaulo,
+      clientCodePara,
       email,
       phone,
       
@@ -686,14 +689,25 @@ export default function EditDealModal({ isOpen, onClose, deal, pipelineStages }:
                     </div>
                   )}
                   
-                  <div className="grid gap-2">
-                    <Label htmlFor="client-code">Código do Cliente</Label>
-                    <Input
-                      id="client-code"
-                      value={clientCode}
-                      onChange={(e) => setClientCode(e.target.value)}
-                      placeholder="Código do cliente no sistema"
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="client-code-sp">Código Sisrev São Paulo</Label>
+                      <Input
+                        id="client-code-sp"
+                        value={clientCodeSaoPaulo}
+                        onChange={(e) => setClientCodeSaoPaulo(e.target.value)}
+                        placeholder="Código Sisrev São Paulo"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="client-code-pa">Código Sisrev Pará</Label>
+                      <Input
+                        id="client-code-pa"
+                        value={clientCodePara}
+                        onChange={(e) => setClientCodePara(e.target.value)}
+                        placeholder="Código Sisrev Pará"
+                      />
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">

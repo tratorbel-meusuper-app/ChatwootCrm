@@ -20,8 +20,9 @@ import { eq, and, desc, asc, or, like } from "drizzle-orm";
 export interface IStorage {
   // Users
   getUser(id: number): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser?(id: number, updateData: Partial<User>): Promise<User | undefined>;
   
   // Leads (Contatos)
   getLeads(): Promise<Lead[]>;
@@ -59,7 +60,7 @@ export interface IStorage {
   createDeal(deal: InsertDeal): Promise<Deal & Partial<Lead>>;
   updateDeal(id: number, deal: Partial<Deal>): Promise<Deal | undefined>;
   deleteDeal(id: number): Promise<boolean>;
-  getDealsByStage(stageId: number): Promise<(Deal & Partial<Lead>)[]>;
+  getDealsByStage(stageId: number, pipelineId?: number): Promise<(Deal & Partial<Lead>)[]>;
   // Métodos para filtrar deals
   getDealsBySaleStatus(saleStatus: string): Promise<(Deal & Partial<Lead>)[]>;
   getDealsByLeadId(leadId: number): Promise<(Deal & Partial<Lead>)[]>;
@@ -194,9 +195,9 @@ export class MemStorage implements IStorage {
     return this.users.get(id);
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  async getUserByEmail(email: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(
-      (user) => user.username === username,
+      (user) => user.email === email,
     );
   }
 
@@ -284,10 +285,39 @@ export class MemStorage implements IStorage {
     return this.dealsList.delete(id);
   }
   
-  async getDealsByStage(stageId: number): Promise<Deal[]> {
-    return Array.from(this.dealsList.values())
-      .filter(deal => deal.stageId === stageId)
-      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  async getDealsByStage(stageId: number, pipelineId?: number): Promise<(Deal & Partial<Lead>)[]> {
+    const query = db
+      .select({
+        ...deals,
+        companyName: leads.companyName,
+        clientCategory: leads.clientCategory,
+        clientType: leads.clientType,
+        cnpj: leads.cnpj,
+        corporateName: leads.corporateName,
+        cpf: leads.cpf,
+        stateRegistration: leads.stateRegistration,
+        clientCodeSaoPaulo: leads.clientCodeSaoPaulo,
+        clientCodePara: leads.clientCodePara,
+        email: leads.email,
+        phone: leads.phone,
+        address: leads.address,
+        addressNumber: leads.addressNumber,
+        addressComplement: leads.addressComplement,
+        neighborhood: leads.neighborhood,
+        city: leads.city,
+        state: leads.state,
+        zipCode: leads.zipCode,
+        chatwootContactId: leads.chatwootContactId,
+        chatwootAgentId: leads.chatwootAgentId,
+        chatwootAgentName: leads.chatwootAgentName,
+      })
+      .from(deals)
+      .leftJoin(leads, eq(deals.leadId, leads.id))
+      .where(eq(deals.stageId, stageId));
+    if (pipelineId) {
+      query.where(eq(deals.pipelineId, pipelineId));
+    }
+    return await query.orderBy(asc(deals.order), desc(deals.updatedAt));
   }
   
   async getDealsBySaleStatus(saleStatus: string): Promise<Deal[]> {
@@ -494,19 +524,19 @@ export class MemStorage implements IStorage {
     return this.appSettings;
   }
   
-  async updateSettings(insertSettings: InsertSettings): Promise<Settings> {
+  async updateSettings(settings: InsertSettings): Promise<Settings> {
     const now = new Date();
     if (!this.appSettings) {
       const id = this.settingsCurrentId++;
       this.appSettings = {
-        ...insertSettings,
+        ...settings,
         id,
         lastSyncAt: now,
       };
     } else {
       this.appSettings = {
         ...this.appSettings,
-        ...insertSettings,
+        ...settings,
         lastSyncAt: now,
       };
     }
@@ -614,8 +644,8 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
     return user || undefined;
   }
 
@@ -625,6 +655,15 @@ export class DatabaseStorage implements IStorage {
       .values(insertUser)
       .returning();
     return user;
+  }
+
+  async updateUser(id: number, updateData: Partial<User>): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, id))
+      .returning();
+    return user || undefined;
   }
 
   // Leads (Contatos)
@@ -901,36 +940,38 @@ export class DatabaseStorage implements IStorage {
         .select({
           ...deals,
           // Campos do Lead com prefixo para evitar conflitos
-        companyName: leads.companyName,
-        clientCategory: leads.clientCategory,
-        clientType: leads.clientType,
-        cnpj: leads.cnpj,
-        corporateName: leads.corporateName,
-        cpf: leads.cpf,
-        stateRegistration: leads.stateRegistration,
-        clientCode: leads.clientCode,
-        email: leads.email,
-        phone: leads.phone,
-        address: leads.address,
-        addressNumber: leads.addressNumber,
-        addressComplement: leads.addressComplement,
-        neighborhood: leads.neighborhood,
-        city: leads.city,
-        state: leads.state,
-        zipCode: leads.zipCode,
-        chatwootContactId: leads.chatwootContactId,
-        chatwootAgentId: leads.chatwootAgentId,
-        chatwootAgentName: leads.chatwootAgentName,
-      })
-      .from(deals)
-      .leftJoin(leads, eq(deals.leadId, leads.id));
-      
+          companyName: leads.companyName,
+          clientCategory: leads.clientCategory,
+          clientType: leads.clientType,
+          cnpj: leads.cnpj,
+          corporateName: leads.corporateName,
+          cpf: leads.cpf,
+          stateRegistration: leads.stateRegistration,
+          clientCodeSaoPaulo: leads.clientCodeSaoPaulo,
+          clientCodePara: leads.clientCodePara,
+          email: leads.email,
+          phone: leads.phone,
+          address: leads.address,
+          addressNumber: leads.addressNumber,
+          addressComplement: leads.addressComplement,
+          neighborhood: leads.neighborhood,
+          city: leads.city,
+          state: leads.state,
+          zipCode: leads.zipCode,
+          chatwootContactId: leads.chatwootContactId,
+          chatwootAgentId: leads.chatwootAgentId,
+          chatwootAgentName: leads.chatwootAgentName,
+        })
+        .from(deals)
+        .leftJoin(leads, eq(deals.leadId, leads.id));
+        
       // Filtra por pipeline se um ID for fornecido
       if (pipelineId) {
         query.where(eq(deals.pipelineId, pipelineId));
       }
       
-      return await query.orderBy(desc(deals.updatedAt));
+      // Ordenar por 'order' e depois por 'updatedAt'
+      return await query.orderBy(asc(deals.order), desc(deals.updatedAt));
     } catch (error: any) {
       console.error("Erro ao buscar deals:", error);
       throw new Error(`Failed to fetch deals: ${error.message}`);
@@ -949,7 +990,8 @@ export class DatabaseStorage implements IStorage {
         corporateName: leads.corporateName,
         cpf: leads.cpf,
         stateRegistration: leads.stateRegistration,
-        clientCode: leads.clientCode,
+        clientCodeSaoPaulo: leads.clientCodeSaoPaulo,
+        clientCodePara: leads.clientCodePara,
         email: leads.email,
         phone: leads.phone,
         address: leads.address,
@@ -988,7 +1030,8 @@ export class DatabaseStorage implements IStorage {
         corporateName: leads.corporateName,
         cpf: leads.cpf,
         stateRegistration: leads.stateRegistration,
-        clientCode: leads.clientCode,
+        clientCodeSaoPaulo: leads.clientCodeSaoPaulo,
+        clientCodePara: leads.clientCodePara,
         email: leads.email,
         phone: leads.phone,
         address: leads.address,
@@ -1031,7 +1074,8 @@ export class DatabaseStorage implements IStorage {
         corporateName: leads.corporateName,
         cpf: leads.cpf,
         stateRegistration: leads.stateRegistration,
-        clientCode: leads.clientCode,
+        clientCodeSaoPaulo: leads.clientCodeSaoPaulo,
+        clientCodePara: leads.clientCodePara,
         email: leads.email,
         phone: leads.phone,
         address: leads.address,
@@ -1107,7 +1151,6 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select({
         ...deals,
-        // Campos do Lead com prefixo para evitar conflitos
         companyName: leads.companyName,
         clientCategory: leads.clientCategory,
         clientType: leads.clientType,
@@ -1115,7 +1158,8 @@ export class DatabaseStorage implements IStorage {
         corporateName: leads.corporateName,
         cpf: leads.cpf,
         stateRegistration: leads.stateRegistration,
-        clientCode: leads.clientCode,
+        clientCodeSaoPaulo: leads.clientCodeSaoPaulo,
+        clientCodePara: leads.clientCodePara,
         email: leads.email,
         phone: leads.phone,
         address: leads.address,
@@ -1132,7 +1176,7 @@ export class DatabaseStorage implements IStorage {
       .from(deals)
       .leftJoin(leads, eq(deals.leadId, leads.id))
       .where(eq(deals.stageId, stageId))
-      .orderBy(desc(deals.updatedAt));
+      .orderBy(asc(deals.order), desc(deals.updatedAt));
   }
 
   async getDealsBySaleStatus(saleStatus: string): Promise<(Deal & Partial<Lead>)[]> {
@@ -1147,7 +1191,8 @@ export class DatabaseStorage implements IStorage {
         corporateName: leads.corporateName,
         cpf: leads.cpf,
         stateRegistration: leads.stateRegistration,
-        clientCode: leads.clientCode,
+        clientCodeSaoPaulo: leads.clientCodeSaoPaulo,
+        clientCodePara: leads.clientCodePara,
         email: leads.email,
         phone: leads.phone,
         address: leads.address,
@@ -1179,7 +1224,8 @@ export class DatabaseStorage implements IStorage {
         corporateName: leads.corporateName,
         cpf: leads.cpf,
         stateRegistration: leads.stateRegistration,
-        clientCode: leads.clientCode,
+        clientCodeSaoPaulo: leads.clientCodeSaoPaulo,
+        clientCodePara: leads.clientCodePara,
         email: leads.email,
         phone: leads.phone,
         address: leads.address,
@@ -1470,6 +1516,11 @@ export class DatabaseStorage implements IStorage {
       .where(eq(machineBrands.id, id))
       .returning();
     return !!brand;
+  }
+
+  // Users
+  async getUsers(): Promise<User[]> {
+    return await db.select().from(users);
   }
 }
 

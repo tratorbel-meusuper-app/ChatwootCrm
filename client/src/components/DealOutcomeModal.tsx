@@ -13,7 +13,7 @@ import { Deal, LossReason } from '@shared/schema';
 type DealOutcomeModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  deal: Deal;
+  deal: Partial<Deal>;
   targetStageId: number;
   targetStageType: 'completed' | 'lost' | null;
 };

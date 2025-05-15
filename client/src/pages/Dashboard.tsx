@@ -17,6 +17,7 @@ import { Settings, Pipeline } from "@shared/schema";
 import HeatmapView from "@/pages/Heatmap";
 import { ChevronUpIcon, ChevronDownIcon, FilterIcon, PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/components/AuthProvider";
 
 export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -26,6 +27,7 @@ export default function Dashboard() {
   const [showFilters, setShowFilters] = useState(true);
   
   const { toast } = useToast();
+  const { user, logout } = useAuth();
   
   // Estado para controlar o pipeline ativo
   const [activePipelineId, setActivePipelineId] = useState<number | null>(null);
@@ -38,24 +40,26 @@ export default function Dashboard() {
   // Fetch o pipeline padrão
   const { data: defaultPipeline } = useQuery<Pipeline>({
     queryKey: ['/api/pipelines/default'],
-    onSuccess: (data) => {
-      if (data?.id && !activePipelineId) {
-        setActivePipelineId(data.id);
-      }
-    }
   });
   
-  const { pipelineStages, refreshPipelineData, filters, updateFilters } = usePipeline(activePipelineId);
+  useEffect(() => {
+    if (defaultPipeline?.id && !activePipelineId) {
+      setActivePipelineId(defaultPipeline.id);
+    }
+  }, [defaultPipeline, activePipelineId]);
+  
+  const { pipelineStages, refreshPipelineData, filters, updateFilters, deals } = usePipeline(activePipelineId);
   
   // Get settings
   const { data: settings, isLoading: isLoadingSettings } = useQuery<Settings | undefined>({
     queryKey: ['/api/settings'],
-    onSuccess: (data) => {
-      if (data?.activePipelineId) {
-        setActivePipelineId(data.activePipelineId);
-      }
-    }
   });
+
+  useEffect(() => {
+    if (settings?.activePipelineId) {
+      setActivePipelineId(settings.activePipelineId);
+    }
+  }, [settings]);
 
   // Handle URL parameters for API configuration
   useEffect(() => {
@@ -178,17 +182,9 @@ export default function Dashboard() {
   // Flag para controlar a verificação do banco de dados
   const [dbCheckPerformed, setDbCheckPerformed] = useState(false);
   
-  // Atualizar dados do pipeline periodicamente
+  // Atualizar dados do pipeline ao montar
   useEffect(() => {
-    // Atualizar imediatamente ao montar
     refreshPipelineData();
-    
-    // Configurar atualização a cada 5 segundos
-    const interval = setInterval(() => {
-      refreshPipelineData();
-    }, 5000);
-    
-    return () => clearInterval(interval);
   }, []);
   
   // Verificar erros 500 nas requisições para exibir o inicializador de DB
@@ -199,16 +195,11 @@ export default function Dashboard() {
     
     const checkDatabaseStatus = async () => {
       try {
-        const response = await fetch('/api/pipeline-stages');
-        if (response.status === 500) {
-          setShowDBInitializer(true);
-        }
-        // Marcar que a verificação foi realizada
+        await apiRequest('/api/pipeline-stages');
         setDbCheckPerformed(true);
       } catch (error) {
         console.error('Erro ao verificar status do banco de dados:', error);
         setShowDBInitializer(true);
-        // Marcar que a verificação foi realizada mesmo com erro
         setDbCheckPerformed(true);
       }
     };
@@ -348,9 +339,15 @@ export default function Dashboard() {
               <div className="h-full overflow-auto">
                 <KanbanBoard 
                   pipelineStages={pipelineStages} 
-                  filters={filters} 
+                  filters={{ 
+                    ...filters, 
+                    sortBy: filters.sortBy ?? 'name', 
+                    sortOrder: filters.sortOrder ?? 'asc', 
+                    hideClosed: Boolean(filters.hideClosed) 
+                  }} 
                   activePipelineId={activePipelineId}
                   onAddDeal={() => setIsAddDealModalOpen(true)}
+                  deals={deals}
                 />
               </div>
             )}
