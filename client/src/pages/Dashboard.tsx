@@ -207,6 +207,13 @@ export default function Dashboard() {
     checkDatabaseStatus();
   }, [dbCheckPerformed]);
 
+  // Buscar todos os usuários para o filtro (apenas admin)
+  const { data: users = [] } = useQuery<any[]>({
+    queryKey: ['/api/users'],
+    enabled: user?.role === 'admin',
+  });
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       {/* Cabeçalho fixo */}
@@ -243,6 +250,23 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2">
                   <FilterIcon className="h-4 w-4 text-yellow-400 dark:text-yellow-400" />
                   <span className="text-sm font-medium text-yellow-400 dark:text-yellow-400">Filtros</span>
+                  {/* Filtro de usuário para admin */}
+                  {user?.role === 'admin' && (
+                    <div className="ml-4 flex items-center gap-1">
+                      <label className="font-medium text-white text-xs" htmlFor="user-filter">Usuário:</label>
+                      <select
+                        id="user-filter"
+                        className="border rounded px-2 py-1 text-xs bg-blue-900 text-white border-blue-700 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                        value={selectedUserId || ''}
+                        onChange={e => setSelectedUserId(e.target.value ? Number(e.target.value) : null)}
+                      >
+                        <option value="">Todos</option>
+                        {users.map(u => (
+                          <option key={u.id} value={u.id}>{u.email}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex items-center space-x-4">
@@ -348,6 +372,7 @@ export default function Dashboard() {
                   activePipelineId={activePipelineId}
                   onAddDeal={() => setIsAddDealModalOpen(true)}
                   deals={deals}
+                  userId={user?.role === 'admin' ? selectedUserId : user?.id}
                 />
               </div>
             )}

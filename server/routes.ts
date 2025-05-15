@@ -195,10 +195,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           deals = (await storage.getDeals()).filter((deal: any) => deal.userId === user.id);
         }
       }
-      // Enriquecer os deals com informações do lead
+      // Enriquecer os deals com informações do lead e do usuário criador
       const enrichedDeals = await Promise.all(
         deals.map(async (deal: any) => {
           const lead = await storage.getLead(deal.leadId);
+          let creatorUserEmail = '';
+          if (typeof deal.userId === 'number') {
+            try {
+              const creatorUser = await storage.getUser(deal.userId);
+              creatorUserEmail = creatorUser?.email || '';
+            } catch (e) {
+              creatorUserEmail = '';
+            }
+          }
           return {
             ...deal,
             leadData: lead ? {
@@ -207,7 +216,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               phone: lead.phone || '',
               email: lead.email || ''
             } : { name: '', companyName: '', phone: '', email: '' },
-            creatorUserId: deal.userId // para exibir no frontend
+            creatorUserId: deal.userId, // para exibir no frontend
+            creatorUserEmail // novo campo
           };
         })
       );

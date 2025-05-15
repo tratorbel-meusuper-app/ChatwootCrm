@@ -87,6 +87,7 @@ interface KanbanBoardProps {
   activePipelineId: number | null;
   onAddDeal: () => void; // Função para abrir o modal de adicionar negócio
   deals?: any[]; // Aceita Deal[] ou ExtendedDeal[]
+  userId?: number | null;
 }
 
 interface StageWithDeals extends PipelineStage {
@@ -94,7 +95,7 @@ interface StageWithDeals extends PipelineStage {
   totalValue: number;
 }
 
-export default function KanbanBoard({ pipelineStages, filters, activePipelineId, onAddDeal, deals }: KanbanBoardProps) {
+export default function KanbanBoard({ pipelineStages, filters, activePipelineId, onAddDeal, deals = [], userId }: KanbanBoardProps) {
   const [boardData, setBoardData] = useState<StageWithDeals[]>([]);
   const [isEditStageModalOpen, setIsEditStageModalOpen] = useState(false);
   const [isAddStageModalOpen, setIsAddStageModalOpen] = useState(false);
@@ -109,13 +110,17 @@ export default function KanbanBoard({ pipelineStages, filters, activePipelineId,
   const queryClient = useQueryClient();
   const { toast } = useToast();
   
+  // Buscar deals filtrados por userId se fornecido
+  // Se userId for null ou undefined, mostrar todos (admin)
+  const filteredDeals = userId ? deals.filter(d => d.userId === userId) : deals;
+  
   useEffect(() => {
     const fetchDeals = async () => {
       if (!activePipelineId) return;
       let dealsData: Deal[] = [];
-      if (deals) {
+      if (filteredDeals) {
         // Se receber deals via props, use-os diretamente
-        dealsData = deals;
+        dealsData = filteredDeals;
       } else {
         // Caso contrário, buscar manualmente como antes
         try {
@@ -215,7 +220,7 @@ export default function KanbanBoard({ pipelineStages, filters, activePipelineId,
     };
     
     fetchDeals();
-  }, [pipelineStages, activePipelineId, filters, deals, toast]);
+  }, [pipelineStages, activePipelineId, filters, filteredDeals, toast]);
   
   const onDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId } = result;
@@ -548,7 +553,6 @@ export default function KanbanBoard({ pipelineStages, filters, activePipelineId,
                                   {deal.leadData?.name || "N/D"}
                                 </span>
                               </div>
-                              
                               <div className="flex items-center text-[9px] text-gray-600 dark:text-gray-400">
                                 <Building className="w-2.5 h-2.5 mr-0.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
                                 <span className="truncate">
@@ -556,7 +560,10 @@ export default function KanbanBoard({ pipelineStages, filters, activePipelineId,
                                 </span>
                               </div>
                             </div>
-                            
+                            {/* Exibir e-mail do criador do negócio, se disponível */}
+                            {deal.creatorUserEmail && (
+                              <div className="text-[8px] text-gray-400 dark:text-gray-500 truncate mt-0.5" title={`Criado por: ${deal.creatorUserEmail}`}>Criado por: {deal.creatorUserEmail}</div>
+                            )}
                             <div className="flex items-center justify-between mt-0.5 pt-0.5 border-t border-gray-100 dark:border-gray-700">
                               <span className="text-[9px] text-gray-500 dark:text-gray-400 flex items-center">
                                 <CalendarIcon className="w-2.5 h-2.5 mr-0.5" />
