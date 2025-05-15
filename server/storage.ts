@@ -806,8 +806,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDefaultPipeline(): Promise<Pipeline | undefined> {
-    const pipelines = Array.from(this.pipelinesList.values());
-    return pipelines.find(pipeline => pipeline.isDefault) || pipelines[0];
+    try {
+      const [pipeline] = await db.select().from(pipelines).where(eq(pipelines.isDefault, true));
+      return pipeline || (await db.select().from(pipelines).limit(1))[0];
+    } catch (error: any) {
+      console.error('Error fetching default pipeline:', error);
+      throw new Error(`Failed to fetch default pipeline: ${error.message}`);
+    }
   }
 
   async createPipeline(pipeline: InsertPipeline): Promise<Pipeline> {
