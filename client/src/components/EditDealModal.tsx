@@ -226,6 +226,7 @@ export default function EditDealModal({ isOpen, onClose, deal, pipelineStages }:
           ...deal,
           quoteCodeSao,
           quoteCodePara,
+          notes,
         };
         // Remover campos que podem ser undefined/null e não são obrigatórios
         if (dealUpdate.id === undefined) delete dealUpdate.id;
@@ -375,6 +376,7 @@ export default function EditDealModal({ isOpen, onClose, deal, pipelineStages }:
           ...deal,
           quoteCodeSao,
           quoteCodePara,
+          notes,
         };
         if (dealUpdate.id === undefined) delete dealUpdate.id;
         if (dealUpdate.leadId === undefined) delete dealUpdate.leadId;
